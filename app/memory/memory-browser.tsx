@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calendar, BookOpen, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, BookOpen, Search, ChevronLeft, ChevronRight, AlertCircle, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +13,8 @@ export default function MemoryBrowser() {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<any>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -21,15 +23,24 @@ export default function MemoryBrowser() {
     fetch('/api/memory')
       .then(r => r.json())
       .then(data => {
-        if (data.dates) setAvailableDates(data.dates);
+        if (data.dates && data.dates.length > 0) {
+          setAvailableDates(data.dates);
+        } else if (data.error) {
+          setError('Gateway connection unavailable');
+          setErrorDetails(data);
+        }
       })
-      .catch(() => {});
+      .catch((err) => {
+        setError('Gateway connection unavailable');
+        setErrorDetails({ message: err.message });
+      });
   }, []);
 
   // Fetch content when tab or date changes
   useEffect(() => {
     setLoading(true);
     setError(null);
+    setErrorDetails(null);
 
     const url = tab === 'longterm'
       ? '/api/memory?type=longterm'
@@ -40,13 +51,15 @@ export default function MemoryBrowser() {
       .then(data => {
         if (data.error) {
           setError(data.error);
+          setErrorDetails(data);
           setContent('');
         } else {
           setContent(data.content || '');
         }
       })
-      .catch(() => {
+      .catch((err) => {
         setError('Failed to load memory');
+        setErrorDetails({ message: err.message });
         setContent('');
       })
       .finally(() => setLoading(false));
@@ -66,8 +79,8 @@ export default function MemoryBrowser() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Tabs + Controls */}
-      <div className="flex items-center justify-between">
+      {/* Tabs + Controls - stack on mobile, row on desktop */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-1 bg-[var(--bg-surface)] rounded-lg p-1">
           <button
             onClick={() => setTab('daily')}
@@ -150,14 +163,68 @@ export default function MemoryBrowser() {
       <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl min-h-[500px]">
         {loading ? (
           <div className="flex items-center justify-center h-64 text-sm text-[var(--text-tertiary)]">
+            <RefreshCw className="w-5 h-5 animate-spin mr-2" />
             Loading...
+          </div>
+        ) : error && (error.includes('Gateway') || error.includes('unavailable')) ? (
+          <div className="p-8 max-w-2xl mx-auto">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-amber-400 mb-2">Memory Requires Gateway Connection</h3>
+                  <p className="text-sm text-[var(--text-secondary)] mb-4">
+                    The Memory screen connects to the agent's workspace on the OpenClaw gateway to retrieve daily logs and long-term memory files. 
+                    The gateway appears to be unreachable from this environment.
+                  </p>
+                  <p className="text-xs text-[var(--text-tertiary)] mb-4">
+                    This is a connectivity issue, not a bug. Memory data lives in the workspace filesystem and requires gateway access.
+                  </p>
+                  
+                  {/* Retry button */}
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 transition-colors font-medium mb-4"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Retry Connection
+                  </button>
+
+                  {/* Collapsible error details */}
+                  {errorDetails && (
+                    <div className="mt-4 border-t border-amber-500/20 pt-4">
+                      <button
+                        onClick={() => setShowErrorDetails(!showErrorDetails)}
+                        className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                      >
+                        {showErrorDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        {showErrorDetails ? 'Hide' : 'Show'} Error Details
+                      </button>
+                      {showErrorDetails && (
+                        <pre className="mt-2 p-3 bg-[var(--bg-elevated)] rounded-lg text-xs text-[var(--text-tertiary)] overflow-x-auto">
+                          {JSON.stringify(errorDetails, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-64 text-sm text-[var(--text-tertiary)]">
+            <AlertCircle className="w-8 h-8 mb-3 text-amber-400" />
             <p>{error}</p>
             {tab === 'daily' && (
               <p className="text-xs mt-2">No memory log found for this date</p>
             )}
+            <button
+              onClick={() => window.location.reload()}
+              className="flex items-center gap-1.5 px-3 py-1.5 mt-4 rounded-lg text-xs bg-[var(--bg-hover)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
           </div>
         ) : content ? (
           <div className="p-6 markdown-content">

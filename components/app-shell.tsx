@@ -11,7 +11,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <main className="ml-60 min-h-screen">
+    <main className="md:ml-60 min-h-screen pt-14 md:pt-0">
       {children}
     </main>
   );

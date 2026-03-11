@@ -55,9 +55,9 @@ export default function DocsBrowser() {
   });
 
   return (
-    <div className="flex gap-6 h-[calc(100vh-180px)]">
-      {/* Left: Doc List */}
-      <div className="w-80 shrink-0 flex flex-col bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl overflow-hidden">
+    <div className="flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-180px)]">
+      {/* Left: Doc List - full width on mobile, fixed width on desktop */}
+      <div className="w-full md:w-80 shrink-0 flex flex-col bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl overflow-hidden max-h-96 md:max-h-none">
         {/* Search */}
         <div className="p-3 border-b border-[var(--border-primary)]">
           <div className="relative">

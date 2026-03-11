@@ -53,7 +53,7 @@ export default async function Dashboard() {
         </div>
       ) : stats ? (
         <>
-          {/* Stats Grid */}
+          {/* Stats Grid - 2 columns on mobile, 4 on desktop */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard
               label="In Progress"
@@ -81,6 +81,7 @@ export default async function Dashboard() {
             />
           </div>
 
+          {/* Recent Activity + Team Status - stack vertically on mobile, 2/3 + 1/3 split on desktop */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Recent Activity */}
             <div className="lg:col-span-2">

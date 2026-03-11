@@ -36,15 +36,17 @@ function getActionColor(status: string): string {
 
 export default function ActivityFeed({ tasks }: ActivityFeedProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Sort by last edited, take top 20
   const recentActivity = [...tasks]
     .sort((a, b) => new Date(b.lastEditedTime).getTime() - new Date(a.lastEditedTime).getTime())
     .slice(0, 20);
 
+  // Desktop collapsed state
   if (collapsed) {
     return (
-      <div className="w-10 shrink-0 flex flex-col items-center pt-2">
+      <div className="hidden md:flex w-10 shrink-0 flex-col items-center pt-2">
         <button
           onClick={() => setCollapsed(false)}
           className="p-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-tertiary)]"
@@ -56,8 +58,8 @@ export default function ActivityFeed({ tasks }: ActivityFeedProps) {
     );
   }
 
-  return (
-    <div className="w-80 shrink-0 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl flex flex-col overflow-hidden">
+  const feedContent = (
+    <>
       {/* Header */}
       <div className="px-4 py-3 border-b border-[var(--border-primary)] flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -65,7 +67,10 @@ export default function ActivityFeed({ tasks }: ActivityFeedProps) {
           <span className="text-xs font-medium text-[var(--text-secondary)]">Recent Activity</span>
         </div>
         <button
-          onClick={() => setCollapsed(true)}
+          onClick={() => {
+            setCollapsed(true);
+            setMobileOpen(false);
+          }}
           className="p-1 rounded hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-tertiary)]"
           title="Collapse"
         >
@@ -115,6 +120,37 @@ export default function ActivityFeed({ tasks }: ActivityFeedProps) {
           </div>
         )}
       </div>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile floating button */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="md:hidden fixed bottom-6 right-6 w-14 h-14 rounded-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white shadow-lg flex items-center justify-center z-40 transition-colors"
+        title="Show activity"
+      >
+        <Activity className="w-6 h-6" />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/60 z-50"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="md:hidden fixed right-0 top-0 bottom-0 w-80 bg-[var(--bg-secondary)] border-l border-[var(--border-primary)] flex flex-col overflow-hidden z-50">
+            {feedContent}
+          </div>
+        </>
+      )}
+
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex w-80 shrink-0 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl flex-col overflow-hidden">
+        {feedContent}
+      </div>
+    </>
   );
 }

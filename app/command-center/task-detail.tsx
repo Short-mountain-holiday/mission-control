@@ -17,8 +17,8 @@ export default function TaskDetail({ task, onClose }: TaskDetailProps) {
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
 
-      {/* Panel */}
-      <div className="fixed right-0 top-0 bottom-0 w-[480px] bg-[var(--bg-secondary)] border-l border-[var(--border-primary)] z-50 overflow-y-auto">
+      {/* Panel - full screen on mobile, slide-out on desktop */}
+      <div className="fixed inset-0 md:right-0 md:left-auto md:w-[480px] bg-[var(--bg-secondary)] md:border-l border-[var(--border-primary)] z-50 overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-primary)]">
           <span className={cn('text-sm font-medium', getStatusColor(task.status))}>
