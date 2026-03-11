@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Sidebar from '@/components/sidebar';
+import AppShell from '@/components/app-shell';
 
 export const metadata: Metadata = {
   title: 'Mission Control — Short Mountain Holiday',
@@ -16,9 +17,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="antialiased">
         <Sidebar />
-        <main className="ml-60 min-h-screen">
-          {children}
-        </main>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

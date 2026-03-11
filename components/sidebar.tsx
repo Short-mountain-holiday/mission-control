@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Columns3,
@@ -10,6 +10,7 @@ import {
   Brain,
   FileText,
   Mountain,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,16 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  // Don't render sidebar on login page
+  if (pathname === '/login') return null;
+
+  const handleLogout = async () => {
+    await fetch('/api/auth', { method: 'DELETE' });
+    router.push('/login');
+    router.refresh();
+  };
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-60 bg-[var(--bg-secondary)] border-r border-[var(--border-primary)] flex flex-col z-50">
@@ -64,14 +75,23 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-5 py-4 border-t border-[var(--border-primary)]">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-xs font-medium text-white">
-            D
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-xs font-medium text-white">
+              D
+            </div>
+            <div>
+              <div className="text-xs font-medium text-[var(--text-primary)]">Dru</div>
+              <div className="text-[10px] text-[var(--text-tertiary)]">COO • Online</div>
+            </div>
           </div>
-          <div>
-            <div className="text-xs font-medium text-[var(--text-primary)]">Dru</div>
-            <div className="text-[10px] text-[var(--text-tertiary)]">COO • Online</div>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="p-1.5 rounded-md hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+            title="Logout"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     </aside>

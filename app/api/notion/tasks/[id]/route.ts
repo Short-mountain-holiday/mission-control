@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTask, updateTask } from '@/lib/notion';
+import { verifyOrigin } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
@@ -12,9 +13,9 @@ export async function GET(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
     return NextResponse.json(task);
-  } catch (error) {
-    console.error('Notion API error:', error);
-    return NextResponse.json({ error: 'Failed to fetch task' }, { status: 500 });
+  } catch (err) {
+    console.error('[task] Error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -22,6 +23,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // CSRF check for mutations
+  if (!verifyOrigin(request)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -29,9 +35,11 @@ export async function PATCH(
     if (!task) {
       return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
     }
+
+    console.log(`[AUDIT] task_updated | id: ${id} | fields: ${Object.keys(body).join(',')}`);
     return NextResponse.json(task);
-  } catch (error) {
-    console.error('Notion API error:', error);
-    return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
+  } catch (err) {
+    console.error('[task] Error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

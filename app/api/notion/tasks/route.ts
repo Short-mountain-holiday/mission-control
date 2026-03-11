@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTasks, createTask, getDashboardStats } from '@/lib/notion';
+import { verifyOrigin } from '@/lib/auth';
 import type { TaskStatus } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -21,31 +22,35 @@ export async function GET(request: NextRequest) {
       excludeDone,
     });
     return NextResponse.json(tasks);
-  } catch (error) {
-    console.error('Notion API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch tasks' },
-      { status: 500 }
-    );
+  } catch (err) {
+    console.error('[tasks] Error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
+  // CSRF check for mutations
+  if (!verifyOrigin(request)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
+
+    // Basic validation
+    if (!body.title || typeof body.title !== 'string' || body.title.trim().length < 3) {
+      return NextResponse.json({ error: 'Task name required (min 3 chars)' }, { status: 400 });
+    }
+
     const task = await createTask(body);
     if (!task) {
-      return NextResponse.json(
-        { error: 'Failed to create task' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Failed to create task' }, { status: 500 });
     }
+
+    console.log(`[AUDIT] task_created | name: ${body.title}`);
     return NextResponse.json(task, { status: 201 });
-  } catch (error) {
-    console.error('Notion API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to create task' },
-      { status: 500 }
-    );
+  } catch (err) {
+    console.error('[tasks] Error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

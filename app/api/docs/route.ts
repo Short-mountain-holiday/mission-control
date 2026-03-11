@@ -1,100 +1,103 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readFile, exec, isConfigured, sanitizeShellArg, sanitizePath, WORKSPACE_ROOT } from '@/lib/openclaw';
 
-// Scan the workspace for markdown documents (excluding memory files)
-// Categories are inferred from directory structure
-
-interface DocEntry {
-  name: string;
-  path: string;
-  category: string;
-  lastModified: string;
-  size: number;
-}
-
-const WORKSPACE = '/data/.openclaw/workspace';
-
-// Directories to scan and their category labels
-const SCAN_DIRS: Record<string, string> = {
-  '.': 'Workspace',
-  'context': 'Context',
-  'agents/sloane': 'Sloane',
-  'agents/reid': 'Reid',
-  'agents/willow': 'Willow',
-  'scripts': 'Scripts',
-  'skills/notion': 'Skills',
-  'skills/hostaway': 'Skills',
-};
-
-// Files to exclude
-const EXCLUDE = new Set([
-  'MEMORY.md',
-  'node_modules',
-  '.git',
-  'mission-control',
-]);
-
-async function scanDocs(): Promise<DocEntry[]> {
-  const fs = await import('fs/promises');
-  const path = await import('path');
-  const docs: DocEntry[] = [];
-
-  for (const [dir, category] of Object.entries(SCAN_DIRS)) {
-    const fullDir = path.join(WORKSPACE, dir);
-    try {
-      const files = await fs.readdir(fullDir);
-      for (const file of files) {
-        if (EXCLUDE.has(file)) continue;
-        if (!file.endsWith('.md') && !file.endsWith('.sh') && !file.endsWith('.json')) continue;
-        if (file.startsWith('.')) continue;
-
-        const fullPath = path.join(fullDir, file);
-        try {
-          const stat = await fs.stat(fullPath);
-          if (!stat.isFile()) continue;
-
-          docs.push({
-            name: file,
-            path: fullPath,
-            category,
-            lastModified: stat.mtime.toISOString(),
-            size: stat.size,
-          });
-        } catch {
-          continue;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return docs.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+// Category inference from path
+function inferCategory(path: string): string {
+  if (path.includes('/agents/sloane/')) return 'Sloane';
+  if (path.includes('/agents/reid/')) return 'Reid';
+  if (path.includes('/agents/willow/')) return 'Willow';
+  if (path.includes('/context/')) return 'Context';
+  if (path.includes('/scripts/')) return 'Scripts';
+  if (path.includes('/skills/')) return 'Skills';
+  return 'Workspace';
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const filePath = searchParams.get('path');
+  const search = searchParams.get('search');
 
-  // Read specific file
-  if (filePath) {
-    // Security: only allow reading from workspace
-    if (!filePath.startsWith(WORKSPACE)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+  try {
+    if (!isConfigured()) {
+      return NextResponse.json(
+        { error: 'Gateway not configured', hint: 'Set OPENCLAW_URL and OPENCLAW_TOKEN in Vercel' },
+        { status: 503 }
+      );
     }
-    try {
-      const fs = await import('fs/promises');
-      const content = await fs.readFile(filePath, 'utf-8');
-      return NextResponse.json({ content });
-    } catch {
+
+    // Read specific file
+    if (filePath) {
+      // sanitizePath handles all validation: traversal, blocked files, extensions, workspace bounds
+      const safePath = sanitizePath(filePath);
+      if (!safePath) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      }
+      const content = await readFile(filePath);
+      if (content) {
+        return NextResponse.json({ content });
+      }
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
-  }
 
-  // List all docs
-  try {
-    const docs = await scanDocs();
+    // Search across docs
+    if (search) {
+      if (search.length > 100) {
+        return NextResponse.json({ error: 'Search query too long' }, { status: 400 });
+      }
+      const safeQuery = sanitizeShellArg(search);
+      const output = await exec(
+        `grep -ril -- '${safeQuery}' "${WORKSPACE_ROOT}/" --include='*.md' 2>/dev/null | grep -v node_modules | grep -v .next | grep -v mission-control | grep -v .git | head -30`
+      );
+      const files = output ? output.trim().split('\n').filter(Boolean) : [];
+      return NextResponse.json({
+        docs: files.map(f => ({
+          name: f.split('/').pop() || f,
+          path: f,
+          category: inferCategory(f),
+        })),
+      });
+    }
+
+    // List all docs — single batched exec call for efficiency
+    const script = `
+      find "${WORKSPACE_ROOT}" -maxdepth 3 \\( -name '*.md' -o -name '*.sh' -o -name '*.json' \\) -type f 2>/dev/null | \
+      grep -v node_modules | grep -v .next | grep -v mission-control | grep -v '.git/' | grep -v MEMORY.md | grep -v openclaw.json | \
+      while read f; do
+        stat_out=$(stat -c '%Y %s' "$f" 2>/dev/null)
+        echo "$stat_out $f"
+      done
+    `.trim();
+
+    const output = await exec(script, 30000);
+    if (!output) {
+      return NextResponse.json({ docs: [] });
+    }
+
+    const docs = output
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        const parts = line.split(' ');
+        if (parts.length < 3) return null;
+        const mtime = parseInt(parts[0], 10);
+        const size = parseInt(parts[1], 10);
+        const path = parts.slice(2).join(' ');
+        const name = path.split('/').pop() || path;
+        return {
+          name,
+          path,
+          category: inferCategory(path),
+          lastModified: new Date(mtime * 1000).toISOString(),
+          size,
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+
     return NextResponse.json({ docs });
-  } catch {
-    return NextResponse.json({ docs: [] });
+  } catch (err) {
+    console.error('[docs] Error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

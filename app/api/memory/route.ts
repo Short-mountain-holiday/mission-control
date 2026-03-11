@@ -1,85 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readFile, listFiles, exec, isConfigured, sanitizeShellArg, WORKSPACE_ROOT } from '@/lib/openclaw';
 
-const OPENCLAW_URL = process.env.OPENCLAW_URL || 'https://openclaw.shortmountain.holiday';
-const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || '';
-
-// Memory files live on the VPS. This API route proxies to the OpenClaw gateway
-// to read workspace files. If the gateway doesn't support file reads,
-// we fall back to a direct file read (only works in dev/self-hosted).
-
-async function fetchFromOpenClaw(path: string): Promise<string | null> {
-  try {
-    // Try OpenClaw gateway file read endpoint
-    const res = await fetch(`${OPENCLAW_URL}/api/v1/files/read`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENCLAW_TOKEN}`,
-      },
-      body: JSON.stringify({ path }),
-      signal: AbortSignal.timeout(10000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return data.content || null;
-    }
-  } catch {
-    // Gateway might not support this endpoint yet
-  }
-
-  // Fallback: try reading from filesystem (dev mode / self-hosted Next.js)
-  try {
-    const fs = await import('fs/promises');
-    const content = await fs.readFile(path, 'utf-8');
-    return content;
-  } catch {
-    return null;
-  }
-}
-
-async function listMemoryDates(): Promise<string[]> {
-  try {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const memoryDir = '/data/.openclaw/workspace/memory';
-    const files = await fs.readdir(memoryDir);
-    return files
-      .filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
-      .map(f => f.replace('.md', ''))
-      .sort();
-  } catch {
-    return [];
-  }
-}
+const MEMORY_DIR = `${WORKSPACE_ROOT}/memory`;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
   const date = searchParams.get('date');
+  const search = searchParams.get('search');
 
-  // List available dates
-  if (!type && !date) {
-    const dates = await listMemoryDates();
-    return NextResponse.json({ dates });
-  }
-
-  // Long-term memory
-  if (type === 'longterm') {
-    const content = await fetchFromOpenClaw('/data/.openclaw/workspace/MEMORY.md');
-    if (content) {
-      return NextResponse.json({ content });
+  try {
+    if (!isConfigured()) {
+      return NextResponse.json(
+        { error: 'Gateway not configured', hint: 'Set OPENCLAW_URL and OPENCLAW_TOKEN in Vercel' },
+        { status: 503 }
+      );
     }
-    return NextResponse.json({ error: 'MEMORY.md not found' }, { status: 404 });
-  }
 
-  // Daily memory
-  if (date) {
-    const content = await fetchFromOpenClaw(`/data/.openclaw/workspace/memory/${date}.md`);
-    if (content) {
-      return NextResponse.json({ content, date });
+    // Search across all memory files
+    if (search) {
+      if (search.length > 100) {
+        return NextResponse.json({ error: 'Search query too long' }, { status: 400 });
+      }
+      const safeQuery = sanitizeShellArg(search);
+      const output = await exec(
+        `grep -ril -- '${safeQuery}' "${MEMORY_DIR}/" 2>/dev/null | head -20`
+      );
+      const matchingFiles = output
+        ? output.trim().split('\n').filter(Boolean).map(f => f.replace(`${MEMORY_DIR}/`, '').replace('.md', ''))
+        : [];
+      return NextResponse.json({ dates: matchingFiles });
     }
-    return NextResponse.json({ error: `No memory log for ${date}` }, { status: 404 });
-  }
 
-  return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    // List available dates
+    if (!type && !date) {
+      const files = await listFiles(MEMORY_DIR, '\\d{4}-\\d{2}-\\d{2}\\.md');
+      const dates = files
+        .map(f => f.replace('.md', ''))
+        .filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f))
+        .sort();
+      return NextResponse.json({ dates });
+    }
+
+    // Long-term memory
+    if (type === 'longterm') {
+      const content = await readFile('MEMORY.md');
+      if (content) {
+        return NextResponse.json({ content });
+      }
+      return NextResponse.json({ error: 'MEMORY.md not found' }, { status: 404 });
+    }
+
+    // Daily memory by date
+    if (date) {
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
+      }
+      const content = await readFile(`memory/${date}.md`);
+      if (content) {
+        return NextResponse.json({ content, date });
+      }
+      return NextResponse.json({ error: `No memory log for ${date}` }, { status: 404 });
+    }
+
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  } catch (err) {
+    console.error('[memory] Error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
