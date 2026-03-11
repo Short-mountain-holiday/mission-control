@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFile, listFiles, exec, isConfigured, sanitizeShellArg, WORKSPACE_ROOT } from '@/lib/openclaw';
+import { invokeOpenClawTool, isConfigured } from '@/lib/openclaw';
 
-const MEMORY_DIR = `${WORKSPACE_ROOT}/memory`;
+// Use memory_get tool (available via gateway HTTP) to read memory files.
+// memory_get can access: MEMORY.md, memory/*.md
+
+function parseMemoryGetResult(result: any): string | null {
+  if (!result?.ok) return null;
+  const content = result?.result?.content?.[0]?.text;
+  if (!content) return null;
+  // memory_get wraps result in JSON with { text, path }
+  try {
+    const parsed = JSON.parse(content);
+    return parsed.text || null;
+  } catch {
+    return content;
+  }
+}
+
+async function readMemoryFile(path: string): Promise<string | null> {
+  const result = await invokeOpenClawTool('memory_get', { path });
+  return parseMemoryGetResult(result);
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -17,34 +36,64 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Search across all memory files
+    // Search across memory files
     if (search) {
       if (search.length > 100) {
         return NextResponse.json({ error: 'Search query too long' }, { status: 400 });
       }
-      const safeQuery = sanitizeShellArg(search);
-      const output = await exec(
-        `grep -ril -- '${safeQuery}' "${MEMORY_DIR}/" 2>/dev/null | head -20`
-      );
-      const matchingFiles = output
-        ? output.trim().split('\n').filter(Boolean).map(f => f.replace(`${MEMORY_DIR}/`, '').replace('.md', ''))
-        : [];
-      return NextResponse.json({ dates: matchingFiles });
+      const result = await invokeOpenClawTool('memory_search', { query: search });
+      const content = result?.result?.content?.[0]?.text;
+      let searchResults: any[] = [];
+      if (content) {
+        try {
+          const parsed = JSON.parse(content);
+          searchResults = parsed.results || [];
+        } catch {
+          // fall through
+        }
+      }
+      // Extract dates from search result paths
+      const dates = searchResults
+        .map((r: any) => {
+          const match = r.path?.match(/(\d{4}-\d{2}-\d{2})/);
+          return match ? match[1] : null;
+        })
+        .filter(Boolean);
+      return NextResponse.json({ dates: [...new Set(dates)], results: searchResults });
     }
 
     // List available dates
     if (!type && !date) {
-      const files = await listFiles(MEMORY_DIR, '\\d{4}-\\d{2}-\\d{2}\\.md');
-      const dates = files
-        .map(f => f.replace('.md', ''))
-        .filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f))
-        .sort();
-      return NextResponse.json({ dates });
+      // Read index file which lists available dates
+      const indexContent = await readMemoryFile('memory/index.md');
+      const dates: string[] = [];
+      if (indexContent) {
+        // Parse dates from index (lines like "- 2026-03-12")
+        const dateRegex = /\d{4}-\d{2}-\d{2}/g;
+        let match;
+        while ((match = dateRegex.exec(indexContent)) !== null) {
+          dates.push(match[0]);
+        }
+      }
+      // If index is empty/missing, try recent dates as fallback
+      if (dates.length === 0) {
+        const today = new Date();
+        for (let i = 0; i < 14; i++) {
+          const d = new Date(today);
+          d.setDate(d.getDate() - i);
+          const dateStr = d.toISOString().split('T')[0];
+          const content = await readMemoryFile(`memory/${dateStr}.md`);
+          if (content && content.trim()) {
+            dates.push(dateStr);
+          }
+        }
+      }
+      return NextResponse.json({ dates: dates.sort() });
     }
 
     // Long-term memory
     if (type === 'longterm') {
-      const content = await readFile('MEMORY.md');
+      const content = await readMemoryFile('MEMORY.md');
       if (content) {
         return NextResponse.json({ content });
       }
@@ -53,11 +102,10 @@ export async function GET(request: NextRequest) {
 
     // Daily memory by date
     if (date) {
-      // Validate date format
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
       }
-      const content = await readFile(`memory/${date}.md`);
+      const content = await readMemoryFile(`memory/${date}.md`);
       if (content) {
         return NextResponse.json({ content, date });
       }
