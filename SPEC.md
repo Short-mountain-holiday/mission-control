@@ -1,4 +1,4 @@
-# Mission Control — Product Spec v2
+# Mission Control — Product Spec v3
 
 > SMH Mission Control: Custom operations dashboard for OpenClaw agent system.
 > Repo: `Short-mountain-holiday/mission-control`
@@ -11,14 +11,14 @@
 
 1. [Tech Stack & Architecture](#tech-stack--architecture)
 2. [Environment Variables](#environment-variables)
-3. [Phase 1 — Complete](#phase-1--complete-)
-4. [Phase 2 — Up Next](#phase-2--up-next)
+3. [Security](#security)
+4. [Phase 1 — Complete](#phase-1--complete-)
+5. [Phase 2 — Up Next](#phase-2--up-next)
    - [2A: Infrastructure](#2a-infrastructure)
    - [2B: Screen Upgrades](#2b-screen-upgrades)
    - [2C: New Screens](#2c-new-screens)
-   - [2D: Chat Widget](#2d-chat-widget)
-5. [Phase 3 — Future](#phase-3--future)
-6. [Build Order](#build-order)
+6. [Phase 3 — Future](#phase-3--future)
+7. [Build Order](#build-order)
 
 ---
 
@@ -32,7 +32,6 @@
 | Markdown | react-markdown | For Memory/Docs content rendering |
 | Notion API | Direct REST fetch | Not SDK — Notion SDK v5 broke `databases.query`. All calls go through `lib/notion.ts` |
 | OpenClaw API | `/tools/invoke` endpoint | For file reads, cron data, command execution. Auth via bearer token |
-| OpenClaw Chat | `/v1/chat/completions` endpoint | OpenAI-compatible streaming chat. Must be enabled in gateway config |
 | Hosting | Vercel (free tier) | ISR (Incremental Static Regeneration) for data freshness |
 | Data refresh | `revalidate = 60` on server pages | 60-second ISR. Client components use `fetch` on mount |
 
@@ -97,9 +96,105 @@ mission-control/
 | Variable | Purpose | Status | Where Set |
 |----------|---------|--------|-----------|
 | `NOTION_API_KEY` | Notion database CRUD | ✅ Set | Vercel env |
-| `SITE_PASSWORD` | Password gate for dashboard access | ⬜ Phase 2A | Vercel env |
+| `SITE_PASSWORD` | Password gate for dashboard access (min 16 chars) | ⬜ Phase 2A | Vercel env |
+| `COOKIE_SECRET` | Salt for auth cookie generation (random 32+ char string) | ⬜ Phase 2A | Vercel env |
 | `OPENCLAW_URL` | Gateway base URL (`https://openclaw.shortmountain.holiday`) | ⬜ Phase 2A | Vercel env |
 | `OPENCLAW_TOKEN` | Gateway bearer auth token | ⬜ Phase 2A | Vercel env |
+
+**Secrets management:**
+- All secrets are set as Vercel environment variables — never hardcoded in source
+- `NOTION_API_KEY`: Ensure the Notion integration is scoped to only the SMH Command Center, Agent Resources, and Plans Log databases. Do not grant access to personal Notion pages. Review integration permissions at notion.so/my-integrations periodically
+- `OPENCLAW_TOKEN`: This token has full operator access to the gateway (shell, files, messaging, 1Password). Treat it as the highest-sensitivity credential in this app
+
+---
+
+## Security
+
+**Threat model:** Two-user private app (Micah + Amber). Primary risks: accidental URL exposure, opportunistic brute-force, credential leaks. Not nation-state — but the OpenClaw gateway token grants full system access (shell commands, file I/O, messaging, 1Password), so the blast radius of any breach is high. Security is sized accordingly.
+
+**Access model:** Single shared password. No user accounts, no public registration, no guest access, no open endpoints except `/login`.
+
+### Security Principles
+
+1. **Defense in depth** — middleware checks auth, individual routes re-verify auth for sensitive operations (especially chat)
+2. **Least privilege** — gateway token scoped as narrowly as possible (see Chat Widget security requirements)
+3. **No trust in client input** — all user input sanitized before touching shell commands, file paths, or database queries
+4. **Fail closed** — if auth check fails or is ambiguous, deny access
+5. **Errors are opaque** — clients get generic error messages; full details logged server-side only
+
+### Security Headers
+
+Add to `next.config.ts`:
+
+```typescript
+headers: async () => [{
+  source: '/(.*)',
+  headers: [
+    { key: 'X-Frame-Options', value: 'DENY' },
+    { key: 'X-Content-Type-Options', value: 'nosniff' },
+    { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+    { key: 'X-XSS-Protection', value: '1; mode=block' },
+    { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'" },
+  ],
+}]
+```
+
+### CSRF Protection
+
+All mutation endpoints (`POST`, `PATCH`, `DELETE`) must verify request origin:
+
+**Implementation (shared helper or per-route):**
+```typescript
+function verifyOrigin(req: Request): boolean {
+  const origin = req.headers.get('origin');
+  const allowed = process.env.VERCEL_URL
+    ? [`https://${process.env.VERCEL_URL}`, process.env.NEXT_PUBLIC_APP_URL].filter(Boolean)
+    : ['http://localhost:3000'];
+  return !!origin && allowed.includes(origin);
+}
+```
+
+Return `403 Forbidden` if origin check fails. Apply to: `/api/auth`, `/api/notion/tasks`, `/api/notion/tasks/[id]`.
+
+### Error Handling Standard
+
+All API routes must follow this pattern:
+
+```typescript
+try {
+  // ... route logic
+} catch (err) {
+  console.error(`[${routeName}] Error:`, err); // Full details server-side
+  return Response.json(
+    { error: 'Internal server error' },  // Generic message to client
+    { status: 500 }
+  );
+}
+```
+
+**Rules:**
+- Never return `err.message`, `err.stack`, or raw gateway responses to the client
+- Never include file paths, hostnames, or token fragments in client-facing errors
+- Gateway errors → return `{ error: 'Service unavailable' }` with status 503
+- Auth errors → return `{ error: 'Unauthorized' }` with status 401 (no details about what failed)
+
+### Audit Logging
+
+Log the following events to server console (Vercel captures in function logs):
+
+| Event | What to log |
+|-------|------------|
+| Auth success | `[AUDIT] auth_success \| IP: <ip>` |
+| Auth failure | `[AUDIT] auth_failure \| IP: <ip>` |
+| Task created | `[AUDIT] task_created \| name: <name> \| session: <id>` |
+| Task updated | `[AUDIT] task_updated \| id: <id> \| fields: <changed>` |
+| Gateway error | `[AUDIT] gateway_error \| tool: <name> \| type: <err_type>` |
+
+For a two-person app, Vercel function logs are sufficient. No dedicated logging service needed.
+
+### Input Sanitization (lib/openclaw.ts)
+
+All user-controlled input that reaches `exec()` calls must be sanitized. See `lib/openclaw.ts` implementation below for the `sanitizeShellArg()` and `sanitizePath()` functions. **Never pass raw user input into shell commands.**
 
 ---
 
@@ -211,19 +306,19 @@ These must be built first — they unblock everything else.
 
 #### Password Protection
 
-**Priority:** 🔴 Critical (build first)
+**Priority:** 🔴 Critical (build first — blocks all other Phase 2 work)
 
-**Problem:** Dashboard is publicly accessible at the Vercel URL. Anyone with the link can see SMH operational data.
+**Problem:** Dashboard is publicly accessible at the Vercel URL. Anyone with the link can see SMH operational data. Once gateway integration and chat are added, unauthorized access becomes a full system compromise.
 
-**Solution:** Next.js middleware + cookie-based password gate.
+**Solution:** Next.js middleware + cookie-based password gate with brute-force protection.
 
 **Implementation:**
 
 1. **`middleware.ts`** (root of project):
    - Intercept all requests except `/login`, `/api/auth`, `/_next`, `/favicon.ico`
-   - Check for cookie `mc-auth` with value matching `SITE_PASSWORD` hash
+   - Check for cookie `mc-auth` with valid hash value
    - If no valid cookie → redirect to `/login`
-   - Use `crypto.subtle.digest('SHA-256', ...)` for hash comparison (no plaintext in cookie)
+   - Cookie value is verified against `SHA-256(SITE_PASSWORD + COOKIE_SECRET)` — not just the password hash
 
 2. **`app/login/page.tsx`**:
    - Clean login page matching the dark theme
@@ -231,20 +326,36 @@ These must be built first — they unblock everything else.
    - Mountain/SMH branding at top
    - On submit → `POST /api/auth` with password
    - Error state: "Incorrect password" shake animation
+   - No hints about password format or length
 
 3. **`app/api/auth/route.ts`**:
    - `POST`: Compare submitted password against `process.env.SITE_PASSWORD`
-   - If match → set `mc-auth` cookie (HttpOnly, Secure, SameSite=Strict, maxAge=30 days) with SHA-256 hash
-   - If mismatch → 401
+   - If match → set `mc-auth` cookie with `SHA-256(SITE_PASSWORD + COOKIE_SECRET)` value
+   - If mismatch → 401 with generic "Incorrect password" (no detail about what failed)
    - `DELETE`: Clear cookie (logout)
+   - **Startup check:** Log `console.error` warning if `SITE_PASSWORD` is shorter than 16 characters
+   
+   **Cookie settings:**
+   - `HttpOnly: true` — no JavaScript access
+   - `Secure: true` — HTTPS only
+   - `SameSite: 'Strict'` — no cross-site sending
+   - `maxAge: 604800` (7 days — re-enter password weekly)
+   - `Path: '/'`
 
-4. **Vercel env var:**
-   - `SITE_PASSWORD` = whatever Micah sets
+   **Brute-force protection:**
+   - Rate limit `POST /api/auth` to **5 attempts per IP per 15 minutes**
+   - After 5 failed attempts → return `429 Too Many Requests` with `Retry-After: 900` header
+   - Implementation: in-memory `Map<string, { count: number, resetAt: number }>` keyed by IP. Resets on cold start (acceptable for two-user app — still blocks sustained attacks)
+   - Log all failed attempts: `[AUDIT] auth_failure | IP: <ip>`
+
+4. **Vercel env vars:**
+   - `SITE_PASSWORD` = strong password, minimum 16 characters
+   - `COOKIE_SECRET` = random 32+ character string (used as salt in cookie hash)
 
 **UX:**
 - First visit → redirected to `/login`
 - Enter password → cookie set → redirected to Dashboard
-- Cookie lasts 30 days
+- Cookie lasts 7 days (re-enter weekly)
 - No user accounts, no signup — single shared password
 - Logout link in sidebar footer (calls `DELETE /api/auth`)
 
@@ -266,13 +377,50 @@ These must be built first — they unblock everything else.
 const OPENCLAW_URL = process.env.OPENCLAW_URL || '';
 const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || '';
 
+const WORKSPACE_ROOT = '/data/.openclaw/workspace';
+
 interface ToolInvokeResult {
   ok: boolean;
   result?: any;
   error?: { type: string; message: string };
 }
 
-// Core invoke function
+// ── Input Sanitization ──────────────────────────────────
+// NEVER pass raw user input into exec(). Always sanitize first.
+
+/** Strip shell metacharacters. Only allows alphanumeric, space, dash, underscore, dot, slash. */
+export function sanitizeShellArg(input: string): string {
+  if (input.length > 200) throw new Error('Input too long');
+  return input.replace(/[^a-zA-Z0-9\s\-_./]/g, '');
+}
+
+/** Validate and resolve a file path. Returns null if path is outside workspace. */
+export function sanitizePath(input: string): string | null {
+  // Block null bytes and path traversal
+  if (input.includes('\0') || input.includes('..')) return null;
+  
+  // Resolve to absolute
+  const resolved = input.startsWith(WORKSPACE_ROOT)
+    ? input
+    : `${WORKSPACE_ROOT}/${input.replace(/^\/+/, '')}`;
+  
+  // Verify still within workspace after resolution
+  if (!resolved.startsWith(WORKSPACE_ROOT + '/')) return null;
+  
+  // Block sensitive files
+  const blocked = ['.env', '.git/config', 'openclaw.json', 'node_modules'];
+  if (blocked.some(b => resolved.includes(b))) return null;
+  
+  // Only allow known extensions
+  const allowedExt = ['.md', '.sh', '.json', '.txt', '.yml', '.yaml'];
+  const ext = resolved.substring(resolved.lastIndexOf('.'));
+  if (!allowedExt.includes(ext)) return null;
+  
+  return resolved;
+}
+
+// ── Core API ────────────────────────────────────────────
+
 export async function invokeOpenClawTool(
   tool: string,
   args: Record<string, any>,
@@ -290,17 +438,20 @@ export async function invokeOpenClawTool(
   return res.json();
 }
 
-// Read a file from the workspace
+// Read a file from the workspace (path must pass sanitizePath)
 export async function readFile(path: string): Promise<string | null> {
-  const result = await invokeOpenClawTool('read', { path });
+  const safePath = sanitizePath(path);
+  if (!safePath) return null;
+  
+  const result = await invokeOpenClawTool('read', { path: safePath });
   if (result.ok && result.result) {
-    // result.result is the file content (tool output)
     return typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
   }
   return null;
 }
 
 // Execute a shell command and return stdout
+// WARNING: Only call with pre-built commands using sanitized inputs
 export async function exec(command: string): Promise<string | null> {
   const result = await invokeOpenClawTool('exec', { command });
   if (result.ok && result.result) {
@@ -309,10 +460,13 @@ export async function exec(command: string): Promise<string | null> {
   return null;
 }
 
-// List files in a directory
+// List files in a directory (dir must be within workspace)
 export async function listFiles(dir: string, pattern?: string): Promise<string[]> {
-  const cmd = pattern
-    ? `ls -1 ${dir} | grep '${pattern}'`
+  if (!dir.startsWith(WORKSPACE_ROOT)) return [];
+  const safePattern = pattern ? sanitizeShellArg(pattern) : null;
+  
+  const cmd = safePattern
+    ? `ls -1 ${dir} | grep '${safePattern}'`
     : `ls -1 ${dir}`;
   const output = await exec(cmd);
   if (!output) return [];
@@ -322,7 +476,7 @@ export async function listFiles(dir: string, pattern?: string): Promise<string[]
 // Check if gateway is reachable
 export async function healthCheck(): Promise<boolean> {
   try {
-    const result = await invokeOpenClawTool('read', { path: '/data/.openclaw/workspace/IDENTITY.md' });
+    const result = await invokeOpenClawTool('read', { path: `${WORKSPACE_ROOT}/IDENTITY.md` });
     return result.ok === true;
   } catch {
     return false;
@@ -364,7 +518,8 @@ export async function healthCheck(): Promise<boolean> {
 
 4. **Search across all files:**
    - New query param: `?search=<query>`
-   - Use `exec(`grep -ril '${query}' /data/.openclaw/workspace/memory/`)` to find matching files
+   - **Input validation:** Reject queries longer than 100 characters. Sanitize with `sanitizeShellArg(query)` before passing to exec
+   - Use `exec(`grep -ril -- '${sanitizeShellArg(query)}' /data/.openclaw/workspace/memory/`)` to find matching files
    - Return list of matching dates + snippets (first 200 chars of each match context)
 
 **No changes needed to `memory-browser.tsx`** — it already calls `/api/memory` correctly.
@@ -397,13 +552,17 @@ export async function healthCheck(): Promise<boolean> {
    - Return array of `{ name, path, category, lastModified, size }`
 
 2. **Read specific doc:**
-   - Use `readFile(path)` from `lib/openclaw.ts`
-   - Security: validate path starts with `/data/.openclaw/workspace/`
+   - Use `readFile(path)` from `lib/openclaw.ts` — `readFile` internally calls `sanitizePath()` which enforces:
+     1. Rejects paths containing `..`, null bytes, or non-printable characters
+     2. Resolves to absolute and verifies it starts with `/data/.openclaw/workspace/`
+     3. Blocks sensitive files: `.env`, `.git/config`, `openclaw.json`, `node_modules`
+     4. Only allows known extensions: `.md`, `.sh`, `.json`, `.txt`, `.yml`, `.yaml`
    - Return `{ content }` (markdown)
 
 3. **Search across docs:**
    - New query param: `?search=<query>`
-   - Use `exec(`grep -ril '${query}' /data/.openclaw/workspace/ --include='*.md'`)` 
+   - **Input validation:** Reject queries longer than 100 characters. Sanitize with `sanitizeShellArg(query)` before passing to exec
+   - Use `exec(`grep -ril -- '${sanitizeShellArg(query)}' /data/.openclaw/workspace/ --include='*.md'`)`
    - Return matching file list
 
 **Optimization:** Batch the file listing + stats into a single `exec()` call using a small inline script to minimize round trips to the gateway.
@@ -601,161 +760,6 @@ export async function healthCheck(): Promise<boolean> {
 
 ---
 
-### 2D: Chat Widget
-
-**Priority:** 🟡 High
-
-**Problem:** To talk to Dru, Micah has to switch to Telegram or the OpenClaw webchat. Mission Control should have its own persistent chat interface.
-
-**Concept:** Floating chat widget in the bottom-right corner, persistent across all pages and tabs. Functions like a customer support chat widget (Intercom/Drift/Crisp style) but connected directly to the OpenClaw agent.
-
-#### Architecture
-
-**Backend:** OpenClaw gateway's `/v1/chat/completions` endpoint (OpenAI-compatible)
-- Must be enabled in gateway config: `gateway.http.endpoints.chatCompletions.enabled: true`
-- Uses streaming SSE (`stream: true`) for real-time responses
-- Uses `user` field with a stable session identifier to maintain conversation continuity across requests
-- Bearer auth with `OPENCLAW_TOKEN`
-
-**Frontend:** Client component rendered in `layout.tsx` so it persists across all page navigations.
-
-#### Implementation
-
-1. **`components/chat-widget.tsx`** (client component):
-
-   **State management:**
-   - `messages: Message[]` — conversation history
-   - `isOpen: boolean` — expanded/collapsed
-   - `isStreaming: boolean` — currently receiving a response
-   - `inputValue: string` — current input text
-   - Persist `messages` to `localStorage` under key `mc-chat-history`
-   - Generate stable `sessionId` on first load, store in `localStorage` under key `mc-chat-session`
-
-   **Message type:**
-   ```typescript
-   interface ChatMessage {
-     id: string;
-     role: 'user' | 'assistant';
-     content: string;
-     timestamp: number;
-   }
-   ```
-
-   **UI — Collapsed state (default):**
-   - Floating button, bottom-right corner, 56x56px
-   - Emerald circle with chat bubble icon (MessageCircle from Lucide)
-   - Subtle pulse animation if there's a new unread response
-   - `position: fixed; bottom: 24px; right: 24px; z-index: 9999;`
-
-   **UI — Expanded state:**
-   - Panel: 400px wide × 600px tall (or 90vh on mobile)
-   - `position: fixed; bottom: 24px; right: 24px; z-index: 9999;`
-   - Rounded-2xl with shadow-2xl, matches dark theme
-   - **Header bar:** "Chat with Dru" + Dru's avatar + minimize button (X or chevron-down)
-   - **Message area:** Scrollable, auto-scrolls to bottom on new messages
-     - User messages: right-aligned, emerald background, white text
-     - Assistant messages: left-aligned, `bg-[var(--bg-surface)]` background
-     - Timestamps: subtle, relative ("just now", "2m ago")
-     - Markdown rendering in assistant messages (react-markdown)
-     - Streaming indicator: animated dots ("Dru is typing...")
-   - **Input area:** 
-     - Text input with send button (arrow icon)
-     - Send on Enter, Shift+Enter for newline
-     - Disabled while streaming
-     - Placeholder: "Message Dru..."
-   - **Footer:** Tiny "Powered by OpenClaw" text (optional)
-
-   **Animation:**
-   - Open/close: slide-up/slide-down with opacity transition (200ms ease-out)
-   - Message appear: subtle fade-in
-
-2. **`app/api/chat/route.ts`** (streaming API route):
-
-   ```typescript
-   // POST /api/chat
-   // Body: { messages: ChatMessage[], sessionId: string }
-   // Returns: SSE stream (text/event-stream)
-   
-   export async function POST(req: Request) {
-     const { messages, sessionId } = await req.json();
-     
-     // Forward to OpenClaw gateway chat completions
-     const response = await fetch(`${OPENCLAW_URL}/v1/chat/completions`, {
-       method: 'POST',
-       headers: {
-         'Content-Type': 'application/json',
-         'Authorization': `Bearer ${OPENCLAW_TOKEN}`,
-         'x-openclaw-agent-id': 'main',
-       },
-       body: JSON.stringify({
-         model: 'openclaw',
-         stream: true,
-         user: `mission-control-${sessionId}`,
-         messages: messages.map(m => ({
-           role: m.role,
-           content: m.content,
-         })),
-       }),
-     });
-     
-     // Pipe the SSE stream back to the client
-     return new Response(response.body, {
-       headers: {
-         'Content-Type': 'text/event-stream',
-         'Cache-Control': 'no-cache',
-         'Connection': 'keep-alive',
-       },
-     });
-   }
-   ```
-
-3. **Integration in `app/layout.tsx`:**
-   ```tsx
-   import ChatWidget from '@/components/chat-widget';
-   
-   export default function RootLayout({ children }) {
-     return (
-       <html lang="en" className="dark">
-         <body>
-           <Sidebar />
-           <main className="ml-60 min-h-screen">{children}</main>
-           <ChatWidget />  {/* Persistent across all pages */}
-         </body>
-       </html>
-     );
-   }
-   ```
-
-#### Best Practices (researched)
-
-- **Persistence:** localStorage for message history + session ID. Messages survive page reloads and tab switches
-- **Session continuity:** The `user` field in the OpenAI-compatible API creates a stable session in the gateway. Same session ID = same conversation thread
-- **Token limit management:** Only send last 20 messages to the API to avoid context overflow. Keep full history in localStorage for display
-- **Error recovery:** If stream fails mid-response, show partial content + "Connection lost. Click to retry" button
-- **Accessibility:** Focus trap when open, Escape to close, aria-labels on all interactive elements
-- **Performance:** Lazy-load the chat component (dynamic import with `ssr: false`). Don't load it until first click if possible
-- **Mobile:** Full-width on screens <640px, bottom sheet style
-- **Rate limiting:** Disable input for 1 second after sending to prevent spam
-- **Clear chat:** Option in header dropdown to clear conversation history (clears localStorage)
-
-#### Gateway Config Required
-
-The following must be added to the OpenClaw gateway config to enable the chat endpoint:
-
-```json5
-{
-  gateway: {
-    http: {
-      endpoints: {
-        chatCompletions: { enabled: true },
-      },
-    },
-  },
-}
-```
-
-**Security note:** This endpoint is operator-access level. Since Mission Control is already password-protected (Phase 2A) and the gateway URL + token are server-side env vars (never exposed to the client), this is safe. The `/api/chat` route acts as a proxy — the client never sees the gateway token.
-
 ---
 
 ## Phase 3 — Future
@@ -764,6 +768,7 @@ Not scoped in detail. Ideas for future phases:
 
 | Feature | Description | Complexity |
 |---------|-------------|------------|
+| **Chat widget** | Embedded chat with Dru via OpenClaw gateway `/v1/chat/completions`. Removed from Phase 2 due to security risk profile — requires scoped gateway tokens and thorough auth hardening before implementation. Full spec was written (see git history, Spec v3) | Medium-Large |
 | **Notifications panel** | Surface Telegram messages, alerts, cron failures in Mission Control | Medium |
 | **Cost tracker** | API spend per agent per day from OpenClaw session data | Medium |
 | **Hostaway dashboard** | Reservation calendar, upcoming check-ins/outs, occupancy | High |
@@ -784,22 +789,21 @@ Sequenced by dependencies. Items within a step can be built in parallel.
 
 | Step | Feature | Depends On | Est. Effort |
 |------|---------|------------|-------------|
-| 1 | Password protection (middleware + login) | Nothing | Small |
-| 2 | `lib/openclaw.ts` gateway integration library | `OPENCLAW_URL` + `OPENCLAW_TOKEN` env vars | Small |
-| 3 | Memory screen live data | Step 2 | Small |
-| 4 | Docs screen live data | Step 2 | Small |
-| 5 | Calendar live cron data | Step 2 | Medium |
-| 6 | Chat widget | Step 2 + gateway chatCompletions enabled | Medium-Large |
+| 1 | Security headers (`next.config.ts`) | Nothing | Tiny |
+| 2 | Password protection (middleware + login + brute-force) | `SITE_PASSWORD` + `COOKIE_SECRET` env vars | Small |
+| 3 | `lib/openclaw.ts` gateway integration library (with sanitization) | `OPENCLAW_URL` + `OPENCLAW_TOKEN` env vars | Small |
+| 4 | Memory screen live data | Step 3 | Small |
+| 5 | Docs screen live data | Step 3 | Small |
+| 6 | Calendar live cron data | Step 3 | Medium |
 | 7 | Command Center activity feed | Nothing (uses existing Notion data) | Medium |
 | 8 | Command Center task creation | Nothing (API route already exists) | Small |
 | 9 | Projects screen | Nothing (uses existing Notion data) | Medium |
-| 10 | Office screen | Step 2 (needs session activity data) | Large (art + logic) |
+| 10 | Office screen | Step 3 (needs session activity data) | Large (art + logic) |
 
 **Session plan:** 
-- Steps 1-5 = one build session (~2 hours)
-- Step 6 = one build session (~1-2 hours)
-- Steps 7-10 = one build session (~2-3 hours)
+- Steps 1-6 = one build session (~2 hours) — security + infrastructure + live data
+- Steps 7-10 = one build session (~2-3 hours) — feature screens
 
 ---
 
-*Spec v2 — 2026-03-12*
+*Spec v3 — 2026-03-12 (security hardening applied)*
