@@ -5,10 +5,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Columns3,
+  FolderKanban,
   Calendar,
   Users,
   Brain,
   FileText,
+  Building2,
   Mountain,
   LogOut,
 } from 'lucide-react';
@@ -17,10 +19,12 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/command-center', label: 'Command Center', icon: Columns3 },
+  { href: '/projects', label: 'Projects', icon: FolderKanban },
   { href: '/calendar', label: 'Calendar', icon: Calendar },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/memory', label: 'Memory', icon: Brain },
   { href: '/docs', label: 'Docs', icon: FileText },
+  { href: '/office', label: 'The Office', icon: Building2 },
 ];
 
 export default function Sidebar() {

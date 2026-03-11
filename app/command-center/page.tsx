@@ -50,7 +50,7 @@ export default async function CommandCenterPage() {
           {error}
         </div>
       ) : (
-        <KanbanBoard columns={COLUMNS} grouped={grouped} />
+        <KanbanBoard columns={COLUMNS} grouped={grouped} allTasks={tasks} />
       )}
     </div>
   );
