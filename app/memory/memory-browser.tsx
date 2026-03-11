@@ -105,42 +105,44 @@ export default function MemoryBrowser() {
         </div>
 
         {/* Search */}
-        <div className="relative">
+        <div className="relative w-full md:w-auto">
           <Search className="w-4 h-4 text-[var(--text-tertiary)] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Search memories..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-[var(--bg-surface)] border border-[var(--border-primary)] rounded-lg pl-9 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] w-64 focus:outline-none focus:border-[var(--accent)]"
+            className="bg-[var(--bg-surface)] border border-[var(--border-primary)] rounded-lg pl-9 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] w-full md:w-64 focus:outline-none focus:border-[var(--accent)]"
           />
         </div>
       </div>
 
       {/* Date Navigator (daily only) */}
       {tab === 'daily' && (
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigateDate(-1)}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4 text-[var(--text-tertiary)]" />
-          </button>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="bg-[var(--bg-surface)] border border-[var(--border-primary)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-          />
-          <button
-            onClick={() => navigateDate(1)}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
-          >
-            <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)]" />
-          </button>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigateDate(-1)}
+              className="w-8 h-8 min-w-[2rem] rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4 text-[var(--text-tertiary)]" />
+            </button>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-[var(--bg-surface)] border border-[var(--border-primary)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] flex-1"
+            />
+            <button
+              onClick={() => navigateDate(1)}
+              className="w-8 h-8 min-w-[2rem] rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)]" />
+            </button>
+          </div>
 
-          {/* Date chips */}
-          <div className="flex gap-1.5 ml-4 overflow-x-auto">
+          {/* Date chips - horizontal scroll */}
+          <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide">
             {availableDates.slice(-7).reverse().map(date => (
               <button
                 key={date}

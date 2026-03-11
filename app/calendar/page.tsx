@@ -12,6 +12,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -105,19 +106,32 @@ function getJobsForDay(jobs: CronJob[], dayOfWeek: number): CronJob[] {
 export default function CalendarPage() {
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<'live' | 'fallback'>('fallback');
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
   const weekDays = getWeekDays();
 
-  useEffect(() => {
+  const fetchCronData = () => {
+    setLoading(true);
+    setError(null);
     fetch('/api/cron')
       .then(r => r.json())
       .then(data => {
-        if (data.jobs) setJobs(data.jobs);
-        if (data.source) setSource(data.source);
+        if (data.error) {
+          setError(data.error);
+        } else {
+          if (data.jobs) setJobs(data.jobs);
+          if (data.source) setSource(data.source);
+        }
       })
-      .catch(() => {})
+      .catch((err) => {
+        setError('Failed to load calendar data');
+      })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchCronData();
   }, []);
 
   return (
@@ -142,9 +156,21 @@ export default function CalendarPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-sm text-[var(--text-tertiary)]">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+        <div className="flex flex-col items-center justify-center h-64 text-sm text-[var(--text-tertiary)]">
+          <Loader2 className="w-5 h-5 animate-spin mb-2" />
           Loading cron data...
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center h-64 text-sm text-[var(--text-tertiary)]">
+          <AlertCircle className="w-8 h-8 mb-3 text-amber-400" />
+          <p className="mb-4">{error}</p>
+          <button
+            onClick={fetchCronData}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Retry
+          </button>
         </div>
       ) : (
         <>

@@ -219,16 +219,16 @@ export default function KanbanBoard({ columns, grouped, allTasks }: KanbanBoardP
 
   return (
     <>
-      {/* Filters */}
-      <div className="flex items-center gap-3 mb-4 shrink-0">
+      {/* Filters - wrap on mobile */}
+      <div className="flex flex-wrap items-center gap-3 mb-4 shrink-0">
         <Filter className="w-4 h-4 text-[var(--text-tertiary)]" />
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           {OWNERS.map((owner) => (
             <button
               key={owner}
               onClick={() => setOwnerFilter(owner)}
               className={cn(
-                'px-2.5 py-1 rounded-md text-xs transition-colors',
+                'px-2.5 py-1 rounded-md text-xs transition-colors min-h-[44px] md:min-h-0',
                 ownerFilter === owner
                   ? 'bg-[var(--accent)] text-white'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
@@ -238,10 +238,10 @@ export default function KanbanBoard({ columns, grouped, allTasks }: KanbanBoardP
             </button>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white transition-colors font-medium"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white transition-colors font-medium min-h-[44px] md:min-h-0"
           >
             <Plus className="w-3.5 h-3.5" />
             New Task
@@ -249,7 +249,7 @@ export default function KanbanBoard({ columns, grouped, allTasks }: KanbanBoardP
           <button
             onClick={() => setShowDone(!showDone)}
             className={cn(
-              'px-2.5 py-1 rounded-md text-xs transition-colors',
+              'px-2.5 py-1 rounded-md text-xs transition-colors min-h-[44px] md:min-h-0',
               showDone ? 'bg-green-500/20 text-green-400' : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]'
             )}
           >
@@ -258,7 +258,7 @@ export default function KanbanBoard({ columns, grouped, allTasks }: KanbanBoardP
           <button
             onClick={() => setShowParked(!showParked)}
             className={cn(
-              'px-2.5 py-1 rounded-md text-xs transition-colors',
+              'px-2.5 py-1 rounded-md text-xs transition-colors min-h-[44px] md:min-h-0',
               showParked ? 'bg-zinc-500/20 text-zinc-400' : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]'
             )}
           >

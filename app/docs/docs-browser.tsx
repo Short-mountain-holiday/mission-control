@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, FileText, Clock, Folder } from 'lucide-react';
+import { Search, FileText, Clock, Folder, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 
@@ -19,28 +19,49 @@ export default function DocsBrowser() {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [contentError, setContentError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
 
-  useEffect(() => {
+  const fetchDocs = () => {
+    setLoading(true);
+    setError(null);
     fetch('/api/docs')
       .then(r => r.json())
       .then(data => {
-        if (data.docs) setDocs(data.docs);
+        if (data.error) {
+          setError(data.error);
+        } else if (data.docs) {
+          setDocs(data.docs);
+        }
       })
-      .catch(() => {})
+      .catch((err) => {
+        setError('Failed to load documents');
+      })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchDocs();
   }, []);
 
   const loadDoc = async (doc: DocEntry) => {
     setSelectedDoc(doc);
     setContentLoading(true);
+    setContentError(null);
     try {
       const res = await fetch(`/api/docs?path=${encodeURIComponent(doc.path)}`);
       const data = await res.json();
-      setContent(data.content || '');
-    } catch {
-      setContent('Failed to load document');
+      if (data.error) {
+        setContentError(data.error);
+        setContent('');
+      } else {
+        setContent(data.content || '');
+      }
+    } catch (err: any) {
+      setContentError(err.message || 'Failed to load document');
+      setContent('');
     } finally {
       setContentLoading(false);
     }
@@ -92,8 +113,21 @@ export default function DocsBrowser() {
         {/* Doc List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {loading ? (
-            <div className="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]">
+            <div className="flex flex-col items-center justify-center h-32 text-sm text-[var(--text-tertiary)]">
+              <Loader2 className="w-5 h-5 animate-spin mb-2" />
               Loading...
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-32 text-sm text-[var(--text-tertiary)] px-4">
+              <AlertCircle className="w-8 h-8 mb-2 text-amber-400" />
+              <p className="text-center mb-3">{error}</p>
+              <button
+                onClick={fetchDocs}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[var(--bg-hover)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Retry
+              </button>
             </div>
           ) : filteredDocs.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]">
@@ -141,12 +175,29 @@ export default function DocsBrowser() {
             </div>
             <div className="flex-1 overflow-y-auto p-6">
               {contentLoading ? (
-                <div className="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]">
+                <div className="flex flex-col items-center justify-center h-32 text-sm text-[var(--text-tertiary)]">
+                  <Loader2 className="w-5 h-5 animate-spin mb-2" />
                   Loading...
                 </div>
-              ) : (
+              ) : contentError ? (
+                <div className="flex flex-col items-center justify-center h-32 text-sm text-[var(--text-tertiary)]">
+                  <AlertCircle className="w-8 h-8 mb-2 text-amber-400" />
+                  <p className="text-center mb-3">{contentError}</p>
+                  <button
+                    onClick={() => selectedDoc && loadDoc(selectedDoc)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[var(--bg-hover)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Retry
+                  </button>
+                </div>
+              ) : content ? (
                 <div className="markdown-content">
                   <ReactMarkdown>{content}</ReactMarkdown>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]">
+                  No content available
                 </div>
               )}
             </div>
