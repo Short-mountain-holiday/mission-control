@@ -143,26 +143,40 @@ export async function getTask(id: string): Promise<Task | null> {
 }
 
 export async function updateTask(id: string, updates: {
+  title?: string;
   status?: TaskStatus;
   owner?: TaskOwner;
   priority?: TaskPriority;
+  category?: string;
+  dueDate?: string;
   notes?: string;
 }): Promise<Task | null> {
   try {
     const properties: any = {};
 
+    if (updates.title) {
+      properties['Task'] = {
+        title: [{ text: { content: updates.title } }],
+      };
+    }
     if (updates.status) {
       properties['Status'] = { select: { name: updates.status } };
     }
-    if (updates.owner) {
-      properties['Owner'] = { select: { name: updates.owner } };
+    if (updates.owner !== undefined) {
+      properties['Owner'] = updates.owner ? { select: { name: updates.owner } } : { select: null };
     }
-    if (updates.priority) {
-      properties['Priority'] = { select: { name: updates.priority } };
+    if (updates.priority !== undefined) {
+      properties['Priority'] = updates.priority ? { select: { name: updates.priority } } : { select: null };
+    }
+    if (updates.category !== undefined) {
+      properties['Category'] = updates.category ? { select: { name: updates.category } } : { select: null };
+    }
+    if (updates.dueDate !== undefined) {
+      properties['Due Date'] = updates.dueDate ? { date: { start: updates.dueDate } } : { date: null };
     }
     if (updates.notes !== undefined) {
       properties['Notes'] = {
-        rich_text: [{ text: { content: updates.notes } }],
+        rich_text: updates.notes ? [{ text: { content: updates.notes } }] : [],
       };
     }
 
