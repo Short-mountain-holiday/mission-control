@@ -69,7 +69,7 @@ export async function invokeOpenClawTool(
         'Authorization': `Bearer ${OPENCLAW_TOKEN}`,
       },
       body: JSON.stringify({ tool, args }),
-      signal: AbortSignal.timeout(options?.timeoutMs || 15000),
+      signal: AbortSignal.timeout(options?.timeoutMs || 8000),
     });
 
     if (!res.ok) {

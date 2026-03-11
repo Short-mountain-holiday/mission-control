@@ -94,6 +94,11 @@ export function verifyOrigin(req: Request): boolean {
     allowed.push('http://localhost:3000');
   }
 
+  // Also allow Vercel preview deployments (*.vercel.app)
+  if (origin.endsWith('.vercel.app') && origin.startsWith('https://')) {
+    return true;
+  }
+
   return allowed.includes(origin);
 }
 
