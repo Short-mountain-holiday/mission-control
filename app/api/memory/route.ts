@@ -1,31 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { invokeOpenClawTool, isConfigured } from '@/lib/openclaw';
+import fs from 'fs';
+import path from 'path';
 
-// Use memory_get tool (available via gateway HTTP) to read memory files.
-// memory_get can access: MEMORY.md, memory/*.md
+// Memory files are bundled into data/memory/ in the repo (like docs).
+// Daily logs: data/memory/daily/YYYY-MM-DD.md
+// Long-term:  data/memory/MEMORY.md
+// To update: run scripts/sync-memory.sh then redeploy.
 
-function parseMemoryGetResult(result: any): string | null {
-  if (!result?.ok) return null;
-  const content = result?.result?.content?.[0]?.text;
-  if (!content) return null;
-  // memory_get wraps result in JSON with { text, path }
+const MEMORY_ROOT = path.join(process.cwd(), 'data', 'memory');
+const DAILY_DIR = path.join(MEMORY_ROOT, 'daily');
+
+function getAvailableDates(): string[] {
   try {
-    const parsed = JSON.parse(content);
-    return parsed.text || null;
+    const files = fs.readdirSync(DAILY_DIR);
+    return files
+      .filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .map(f => f.replace('.md', ''))
+      .sort();
   } catch {
-    return content;
-  }
-}
-
-async function readMemoryFile(path: string): Promise<{ content: string | null; error?: string }> {
-  try {
-    const result = await invokeOpenClawTool('memory_get', { path });
-    if (!result.ok) {
-      return { content: null, error: `Gateway error: ${JSON.stringify(result.error)}` };
-    }
-    return { content: parseMemoryGetResult(result) };
-  } catch (err: any) {
-    return { content: null, error: `Request failed: ${err.message}` };
+    return [];
   }
 }
 
@@ -34,95 +27,65 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get('type');
   const date = searchParams.get('date');
   const search = searchParams.get('search');
-  const debug = searchParams.get('debug');
 
   try {
-    if (!isConfigured()) {
-      return NextResponse.json(
-        { error: 'Gateway not configured', hint: 'Set OPENCLAW_URL and OPENCLAW_TOKEN in Vercel' },
-        { status: 503 }
-      );
-    }
-
-    // Debug endpoint — shows gateway connectivity status
-    if (debug === '1') {
-      const url = process.env.OPENCLAW_URL || '(not set)';
-      const tokenSet = !!process.env.OPENCLAW_TOKEN;
-      const testResult = await readMemoryFile('MEMORY.md');
-      return NextResponse.json({
-        gatewayUrl: url.replace(/\/+$/, '').substring(0, 40) + '...',
-        tokenSet,
-        testRead: testResult.content ? 'success' : 'failed',
-        testError: testResult.error || null,
-        testContentLength: testResult.content?.length || 0,
-      });
-    }
-
     // Search across memory files
     if (search) {
       if (search.length > 100) {
         return NextResponse.json({ error: 'Search query too long' }, { status: 400 });
       }
-      const result = await invokeOpenClawTool('memory_search', { query: search });
-      const content = result?.result?.content?.[0]?.text;
-      let searchResults: any[] = [];
-      if (content) {
+      const query = search.toLowerCase();
+      const dates = getAvailableDates();
+      const results: { date: string; snippet: string }[] = [];
+
+      for (const d of dates) {
         try {
-          const parsed = JSON.parse(content);
-          searchResults = parsed.results || [];
+          const content = fs.readFileSync(path.join(DAILY_DIR, `${d}.md`), 'utf-8');
+          if (content.toLowerCase().includes(query)) {
+            // Extract snippet around match
+            const idx = content.toLowerCase().indexOf(query);
+            const start = Math.max(0, idx - 80);
+            const end = Math.min(content.length, idx + query.length + 120);
+            results.push({ date: d, snippet: content.substring(start, end).trim() });
+          }
         } catch {
-          // fall through
+          // skip unreadable files
         }
       }
-      const dates = searchResults
-        .map((r: any) => {
-          const match = r.path?.match(/(\d{4}-\d{2}-\d{2})/);
-          return match ? match[1] : null;
-        })
-        .filter(Boolean);
-      return NextResponse.json({ dates: [...new Set(dates)], results: searchResults });
+
+      // Also search MEMORY.md
+      try {
+        const ltm = fs.readFileSync(path.join(MEMORY_ROOT, 'MEMORY.md'), 'utf-8');
+        if (ltm.toLowerCase().includes(query)) {
+          const idx = ltm.toLowerCase().indexOf(query);
+          const start = Math.max(0, idx - 80);
+          const end = Math.min(ltm.length, idx + query.length + 120);
+          results.push({ date: 'longterm', snippet: ltm.substring(start, end).trim() });
+        }
+      } catch {
+        // no MEMORY.md
+      }
+
+      return NextResponse.json({
+        dates: [...new Set(results.map(r => r.date).filter(d => d !== 'longterm'))],
+        results,
+      });
     }
 
-    // List available dates
+    // List available dates (default — no params)
     if (!type && !date) {
-      const indexResult = await readMemoryFile('memory/index.md');
-      const dates: string[] = [];
-      if (indexResult.content) {
-        const dateRegex = /\d{4}-\d{2}-\d{2}/g;
-        let match;
-        while ((match = dateRegex.exec(indexResult.content)) !== null) {
-          dates.push(match[0]);
-        }
-      }
-      // Fallback: try recent dates
-      if (dates.length === 0) {
-        const today = new Date();
-        for (let i = 0; i < 14; i++) {
-          const d = new Date(today);
-          d.setDate(d.getDate() - i);
-          const dateStr = d.toISOString().split('T')[0];
-          const result = await readMemoryFile(`memory/${dateStr}.md`);
-          if (result.content && result.content.trim()) {
-            dates.push(dateStr);
-          }
-        }
-      }
-      return NextResponse.json({
-        dates: dates.sort(),
-        ...(dates.length === 0 ? { gatewayError: indexResult.error } : {}),
-      });
+      const dates = getAvailableDates();
+      return NextResponse.json({ dates });
     }
 
     // Long-term memory
     if (type === 'longterm') {
-      const result = await readMemoryFile('MEMORY.md');
-      if (result.content) {
-        return NextResponse.json({ content: result.content });
+      try {
+        const content = fs.readFileSync(path.join(MEMORY_ROOT, 'MEMORY.md'), 'utf-8');
+        return NextResponse.json({ content });
+      } catch {
+        return NextResponse.json({ error: 'MEMORY.md not found' }, { status: 404 });
       }
-      return NextResponse.json(
-        { error: 'MEMORY.md not found', gatewayError: result.error },
-        { status: 404 }
-      );
     }
 
     // Daily memory by date
@@ -130,14 +93,18 @@ export async function GET(request: NextRequest) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
       }
-      const result = await readMemoryFile(`memory/${date}.md`);
-      if (result.content) {
-        return NextResponse.json({ content: result.content, date });
+      const filePath = path.join(DAILY_DIR, `${date}.md`);
+      // Ensure resolved path stays within DAILY_DIR
+      const resolved = path.resolve(filePath);
+      if (!resolved.startsWith(DAILY_DIR)) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
-      return NextResponse.json(
-        { error: `No memory log for ${date}`, gatewayError: result.error },
-        { status: 404 }
-      );
+      try {
+        const content = fs.readFileSync(resolved, 'utf-8');
+        return NextResponse.json({ content, date });
+      } catch {
+        return NextResponse.json({ error: `No memory log for ${date}` }, { status: 404 });
+      }
     }
 
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
