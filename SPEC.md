@@ -3,7 +3,7 @@
 > SMH Mission Control: Custom operations dashboard for OpenClaw agent system.
 > Repo: `Short-mountain-holiday/mission-control`
 > Live: `https://mission-control-lemon-beta-20.vercel.app`
-> Spec created: 2026-03-12 | Last updated: 2026-03-12
+> Spec created: 2026-03-12 | Last updated: 2026-03-11
 
 ---
 
@@ -762,48 +762,80 @@ export async function healthCheck(): Promise<boolean> {
 
 ---
 
+## Phase 2.5 — Polish Pass ✅
+
+Completed 2026-03-11. Bug fixes and mobile responsive pass across all Phase 2 screens.
+
+### Bug Fixes (9 issues)
+
+| Fix | File(s) |
+|-----|---------|
+| Error boundaries — pages show retry UI instead of white screen | `app/error.tsx`, `app/command-center/error.tsx`, `app/projects/error.tsx` |
+| Calendar fetch checks `res.ok` before JSON parse | `app/calendar/page.tsx` |
+| Memory error detection uses HTTP status codes, not string matching | `app/memory/memory-browser.tsx` |
+| Kanban drag-and-drop captures pre-drag state for correct revert | `app/command-center/kanban-board.tsx` |
+| Timezone uses `America/Chicago` with dynamic CST/CDT (was hardcoded CDT) | `app/calendar/page.tsx`, `app/office/page.tsx` |
+| `DashboardStats` type aligned with actual return shape | `lib/types.ts` |
+| Sidebar logout wrapped in try/catch | `components/sidebar.tsx` |
+| Notes debounce/blur race condition prevented via ref guard | `app/command-center/task-detail.tsx` |
+| Office page AbortController cleanup on unmount | `app/office/page.tsx` |
+
+### Mobile Responsive
+
+| Fix | File(s) |
+|-----|---------|
+| All pages: `p-8` → `p-4 md:p-8` | All page files |
+| Calendar: 7-col grid hidden on mobile, replaced with stacked day list | `app/calendar/page.tsx` |
+| Office: agent cards `grid-cols-5` → `grid-cols-2 md:grid-cols-3 lg:grid-cols-5`, SVG scales | `app/office/page.tsx` |
+| Kanban: column width `w-72` → `w-60 md:w-72` | `app/command-center/kanban-board.tsx` |
+| Activity feed: mobile overlay `w-full max-w-sm` (was fixed `w-80`) | `app/command-center/activity-feed.tsx` |
+| Projects: grid breakpoint `xl` → `lg`, stats row `flex-wrap` | `app/projects/project-grid.tsx` |
+| Team: legend `grid-cols-1 md:grid-cols-2` | `app/team/page.tsx` |
+
+**Not yet done:** Full mobile QA pass (test on real devices), loading skeletons, pull-to-refresh.
+
+---
+
 ## Phase 3 — Future
 
 Not scoped in detail. Ideas for future phases:
 
-| Feature | Description | Complexity |
-|---------|-------------|------------|
-| **Chat widget** | Embedded chat with Dru via OpenClaw gateway `/v1/chat/completions`. Removed from Phase 2 due to security risk profile — requires scoped gateway tokens and thorough auth hardening before implementation. Full spec was written (see git history, Spec v3) | Medium-Large |
-| **Notifications panel** | Surface Telegram messages, alerts, cron failures in Mission Control | Medium |
-| **Cost tracker** | API spend per agent per day from OpenClaw session data | Medium |
-| **Hostaway dashboard** | Reservation calendar, upcoming check-ins/outs, occupancy | High |
-| **Analytics dashboard** | Reid's domain: occupancy rates, revenue, pricing data from Hostaway | High |
-| **Mobile responsive** | Currently desktop-only. Needs mobile breakpoints + hamburger nav | Medium |
-| **Custom domain** | `mission.shortmountain.holiday` or `control.shortmountain.holiday` | Low |
-| **WebSocket/SSE push** | Real-time updates instead of 60s ISR polling | High |
-| **Auth upgrade** | If needed: NextAuth, per-user accounts, role-based access | Medium |
-| **Self-host option** | Run Next.js on VPS for zero-latency file access (eliminates gateway proxy) | Low |
-| **Drag-and-drop kanban** | Move tasks between columns by dragging | Medium |
-| **Dark/light theme toggle** | Currently dark only | Low |
+| Feature | Description | Complexity | Status |
+|---------|-------------|------------|--------|
+| **Chat widget** | Embedded chat with Dru via OpenClaw gateway. Deferred indefinitely due to security risk profile | Medium-Large | Deferred |
+| **Notifications panel** | Surface Telegram messages, alerts, cron failures in Mission Control | Medium | Not started |
+| **Cost tracker** | API spend per agent per day from OpenClaw session data | Medium | Not started |
+| **Hostaway dashboard** | Reservation calendar, upcoming check-ins/outs, occupancy | High | Not started |
+| **Analytics dashboard** | Reid's domain: occupancy rates, revenue, pricing data from Hostaway | High | Not started |
+| **Dark/light theme toggle** | Currently dark only | Low | Not started |
+| **Custom domain** | `mission.shortmountain.holiday` or `control.shortmountain.holiday` | Low | Not started |
+| **WebSocket/SSE push** | Real-time updates instead of 60s ISR polling | High | Not started |
+| **Auth upgrade** | If needed: NextAuth, per-user accounts, role-based access | Medium | Not started |
+| **Self-host option** | Run Next.js on VPS for zero-latency file access (eliminates gateway proxy) | Low | Not started |
+
+**Already completed (moved from Phase 3):**
+- ~~Drag-and-drop kanban~~ — Done in Phase 2 (`@dnd-kit`)
+- ~~Mobile responsive~~ — Done in Phase 2.5 (basic responsive pass, not full redesign)
 
 ---
 
-## Build Order (Phase 2)
+## Build Order (Phase 2) — Complete ✅
 
-Sequenced by dependencies. Items within a step can be built in parallel.
+All 10 steps completed. See Phase 1 and Phase 2 sections above for details.
 
-| Step | Feature | Depends On | Est. Effort |
-|------|---------|------------|-------------|
-| 1 | Security headers (`next.config.ts`) | Nothing | Tiny |
-| 2 | Password protection (middleware + login + brute-force) | `SITE_PASSWORD` + `COOKIE_SECRET` env vars | Small |
-| 3 | `lib/openclaw.ts` gateway integration library (with sanitization) | `OPENCLAW_URL` + `OPENCLAW_TOKEN` env vars | Small |
-| 4 | Memory screen live data | Step 3 | Small |
-| 5 | Docs screen live data | Step 3 | Small |
-| 6 | Calendar live cron data | Step 3 | Medium |
-| 7 | Command Center activity feed | Nothing (uses existing Notion data) | Medium |
-| 8 | Command Center task creation | Nothing (API route already exists) | Small |
-| 9 | Projects screen | Nothing (uses existing Notion data) | Medium |
-| 10 | Office screen | Step 3 (needs session activity data) | Large (art + logic) |
-
-**Session plan:** 
-- Steps 1-6 = one build session (~2 hours) — security + infrastructure + live data
-- Steps 7-10 = one build session (~2-3 hours) — feature screens
+| Step | Feature | Status |
+|------|---------|--------|
+| 1 | Security headers (`next.config.ts`) | ✅ |
+| 2 | Password protection (middleware + login + brute-force) | ✅ |
+| 3 | `lib/openclaw.ts` gateway integration library (with sanitization) | ✅ |
+| 4 | Memory screen live data | ✅ |
+| 5 | Docs screen live data | ✅ |
+| 6 | Calendar live cron data | ✅ |
+| 7 | Command Center activity feed | ✅ |
+| 8 | Command Center task creation | ✅ |
+| 9 | Projects screen | ✅ |
+| 10 | Office screen | ✅ |
 
 ---
 
-*Spec v3 — 2026-03-12 (security hardening applied)*
+*Spec v3.1 — 2026-03-11 (Phase 2.5 polish pass, mobile responsive)*
