@@ -18,19 +18,33 @@ export default function MemoryBrowser() {
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [isGatewayError, setIsGatewayError] = useState(false);
+
   // Fetch available memory dates
   useEffect(() => {
     fetch('/api/memory')
-      .then(r => r.json())
+      .then(r => {
+        if (r.status === 503) {
+          setIsGatewayError(true);
+          return r.json();
+        }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         if (data.dates && data.dates.length > 0) {
           setAvailableDates(data.dates);
-        } else if (data.error) {
+        } else if (data.gatewayError || data.hint) {
+          setIsGatewayError(true);
           setError('Gateway connection unavailable');
+          setErrorDetails(data);
+        } else if (data.error) {
+          setError(data.error);
           setErrorDetails(data);
         }
       })
       .catch((err) => {
+        setIsGatewayError(true);
         setError('Gateway connection unavailable');
         setErrorDetails({ message: err.message });
       });
@@ -168,7 +182,7 @@ export default function MemoryBrowser() {
             <RefreshCw className="w-5 h-5 animate-spin mr-2" />
             Loading...
           </div>
-        ) : error && (error.includes('Gateway') || error.includes('unavailable')) ? (
+        ) : error && isGatewayError ? (
           <div className="p-8 max-w-2xl mx-auto">
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-6">
               <div className="flex items-start gap-3">

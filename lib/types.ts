@@ -78,5 +78,6 @@ export interface DashboardStats {
   overdue: number;
   completedThisWeek: number;
   inbox: number;
-  activeCronJobs: number;
+  byStatus: Record<string, number>;
+  byOwner: Record<string, number>;
 }

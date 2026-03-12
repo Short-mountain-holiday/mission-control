@@ -33,12 +33,22 @@ interface CronJob {
   runs?: CronRun[];
 }
 
+const TZ = 'America/Chicago';
+
+function getTimezoneAbbr(): string {
+  try {
+    return new Date().toLocaleString('en-US', { timeZone: TZ, timeZoneName: 'short' }).split(' ').pop() || 'CT';
+  } catch {
+    return 'CT';
+  }
+}
+
 function parseCronSchedule(schedule: string): string {
   const parts = schedule.split(' ');
   if (parts.length !== 5) return schedule;
   const [min, hour, , , dow] = parts;
 
-  const time = `${hour.padStart(2, '0')}:${min.padStart(2, '0')} CDT`;
+  const time = `${hour.padStart(2, '0')}:${min.padStart(2, '0')} ${getTimezoneAbbr()}`;
 
   const days: Record<string, string> = {
     '*': 'Daily',
@@ -115,7 +125,10 @@ export default function CalendarPage() {
     setLoading(true);
     setError(null);
     fetch('/api/cron')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         if (data.error) {
           setError(data.error);
@@ -124,7 +137,7 @@ export default function CalendarPage() {
           if (data.source) setSource(data.source);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         setError('Failed to load calendar data');
       })
       .finally(() => setLoading(false));
@@ -207,7 +220,7 @@ export default function CalendarPage() {
                         >
                           <div className="font-medium truncate">{job.name}</div>
                           <div className="text-[10px] opacity-70 mt-0.5">
-                            {job.schedule.split(' ')[1]}:{job.schedule.split(' ')[0].padStart(2, '0')} CDT
+                            {job.schedule.split(' ')[1]}:{job.schedule.split(' ')[0].padStart(2, '0')} {getTimezoneAbbr()}
                           </div>
                         </div>
                       ))}

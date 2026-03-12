@@ -23,12 +23,19 @@ const AGENTS: AgentState[] = [
   { name: 'Willow', role: 'Guest Comms', status: 'offline', color: '#f43f5e', initial: 'W', focus: 'Parked', x: 520, y: 320 },
 ];
 
-// Determine if it's business hours in CDT
+const TZ = 'America/Chicago';
+
 function isBusinessHours(): boolean {
-  const now = new Date();
-  // CDT is UTC-5
-  const cdtHour = (now.getUTCHours() - 5 + 24) % 24;
-  return cdtHour >= 8 && cdtHour < 18;
+  const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: TZ, hour: 'numeric', hour12: false }), 10);
+  return hour >= 8 && hour < 18;
+}
+
+function getTimezoneAbbr(): string {
+  try {
+    return new Date().toLocaleString('en-US', { timeZone: TZ, timeZoneName: 'short' }).split(' ').pop() || 'CT';
+  } catch {
+    return 'CT';
+  }
 }
 
 function Desk({ x, y, occupied }: { x: number; y: number; occupied: boolean }) {
@@ -164,12 +171,12 @@ export default function OfficePage() {
       // Update clock
       const now = new Date();
       const cdtTime = now.toLocaleString('en-US', {
-        timeZone: 'America/Chicago',
+        timeZone: TZ,
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
       });
-      setCurrentTime(cdtTime + ' CDT');
+      setCurrentTime(cdtTime + ' ' + getTimezoneAbbr());
     };
 
     updateStatus();
@@ -179,17 +186,18 @@ export default function OfficePage() {
 
   // Try to get live session data
   useEffect(() => {
+    const controller = new AbortController();
+
     const checkSessions = async () => {
       try {
-        const res = await fetch('/api/cron');
+        const res = await fetch('/api/cron', { signal: controller.signal });
         if (res.ok) {
-          // If cron endpoint works, gateway is up → Dru is working
           setAgents(prev => prev.map(a =>
             a.name === 'Dru' ? { ...a, status: 'working' as const, focus: 'Running operations' } : a
           ));
         }
-      } catch {
-        // Gateway down
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         setAgents(prev => prev.map(a =>
           a.name === 'Dru' ? { ...a, status: 'idle' as const, focus: 'Gateway unreachable' } : a
         ));
@@ -198,7 +206,10 @@ export default function OfficePage() {
 
     checkSessions();
     const interval = setInterval(checkSessions, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
   }, []);
 
   const working = agents.filter(a => a.status === 'working').length;

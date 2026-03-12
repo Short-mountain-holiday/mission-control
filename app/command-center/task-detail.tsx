@@ -26,6 +26,7 @@ export default function TaskDetail({ task: initialTask, onClose }: TaskDetailPro
   const [error, setError] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<any>(null);
   const [notesDebounce, setNotesDebounce] = useState<NodeJS.Timeout | null>(null);
+  const notesSaving = useRef(false);
   const router = useRouter();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -109,7 +110,10 @@ export default function TaskDetail({ task: initialTask, onClose }: TaskDetailPro
 
     // Set new debounce
     const timeout = setTimeout(() => {
-      saveField('notes', value);
+      if (!notesSaving.current) {
+        notesSaving.current = true;
+        saveField('notes', value).finally(() => { notesSaving.current = false; });
+      }
     }, 2000);
 
     setNotesDebounce(timeout);
@@ -120,8 +124,9 @@ export default function TaskDetail({ task: initialTask, onClose }: TaskDetailPro
       clearTimeout(notesDebounce);
       setNotesDebounce(null);
     }
-    if (task.notes !== initialTask.notes) {
-      saveField('notes', task.notes);
+    if (task.notes !== initialTask.notes && !notesSaving.current) {
+      notesSaving.current = true;
+      saveField('notes', task.notes).finally(() => { notesSaving.current = false; });
     }
   };
 

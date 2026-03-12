@@ -182,6 +182,9 @@ export default function KanbanBoard({ columns, grouped, allTasks }: KanbanBoardP
 
     if (!task || !oldStatus || oldStatus === newStatus) return;
 
+    // Capture pre-drag state for revert
+    const previousGrouped = { ...localGrouped };
+
     // Optimistic update
     const updatedGrouped = { ...localGrouped };
     updatedGrouped[oldStatus] = updatedGrouped[oldStatus].filter(t => t.id !== taskId);
@@ -201,8 +204,8 @@ export default function KanbanBoard({ columns, grouped, allTasks }: KanbanBoardP
       showToast(`Moved to ${newStatus}`, 'success');
       router.refresh();
     } catch (error) {
-      // Revert on error
-      setLocalGrouped(localGrouped);
+      // Revert to captured pre-drag state (not stale closure)
+      setLocalGrouped(previousGrouped);
       showToast('Failed to move task', 'error');
       console.error('Error updating task:', error);
     }

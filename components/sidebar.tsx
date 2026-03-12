@@ -39,7 +39,11 @@ export default function Sidebar() {
   if (pathname === '/login') return null;
 
   const handleLogout = async () => {
-    await fetch('/api/auth', { method: 'DELETE' });
+    try {
+      await fetch('/api/auth', { method: 'DELETE' });
+    } catch {
+      // Cookie clear failed — navigate to login anyway so the user can re-auth
+    }
     router.push('/login');
     router.refresh();
   };
