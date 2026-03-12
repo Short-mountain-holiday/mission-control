@@ -3,7 +3,7 @@ import DocsBrowser from './docs-browser';
 
 export default function DocsPage() {
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2.5">

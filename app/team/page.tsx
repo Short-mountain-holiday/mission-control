@@ -8,7 +8,7 @@ export default function TeamPage() {
   const domainAgents = agents.filter(a => a.reportsTo === 'Dru');
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 md:p-8 max-w-5xl">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2.5">
@@ -60,7 +60,7 @@ export default function TeamPage() {
       {/* EOS Legend */}
       <div className="mt-12 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl p-5">
         <h3 className="text-sm font-medium mb-3">EOS Accountability Chart</h3>
-        <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-secondary)]">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-[var(--text-secondary)]">
           <div><span className="text-blue-400 font-medium">Visionary</span> — Sets the direction, big decisions, external relationships</div>
           <div><span className="text-emerald-400 font-medium">Integrator</span> — Runs the operating system, coordinates team, accountability</div>
           <div><span className="text-purple-400 font-medium">CMO</span> — Marketing content, social strategy, campaigns, brand voice</div>

@@ -97,7 +97,7 @@ export default async function ProjectsPage() {
   const totalTasks = projects.reduce((s, p) => s + p.totalTasks, 0);
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2.5">

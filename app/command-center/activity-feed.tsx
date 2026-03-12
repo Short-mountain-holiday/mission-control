@@ -141,7 +141,7 @@ export default function ActivityFeed({ tasks }: ActivityFeedProps) {
             className="md:hidden fixed inset-0 bg-black/60 z-50"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="md:hidden fixed right-0 top-0 bottom-0 w-80 bg-[var(--bg-secondary)] border-l border-[var(--border-primary)] flex flex-col overflow-hidden z-50">
+          <div className="md:hidden fixed right-0 top-0 bottom-0 w-full max-w-sm bg-[var(--bg-secondary)] border-l border-[var(--border-primary)] flex flex-col overflow-hidden z-50">
             {feedContent}
           </div>
         </>

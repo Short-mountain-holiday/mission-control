@@ -33,7 +33,7 @@ export default async function CommandCenterPage() {
   }
 
   return (
-    <div className="p-8 h-screen flex flex-col">
+    <div className="p-4 md:p-8 h-screen flex flex-col">
       {/* Header */}
       <div className="mb-6 shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2.5">

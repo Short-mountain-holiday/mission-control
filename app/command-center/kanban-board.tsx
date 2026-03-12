@@ -72,7 +72,7 @@ function DroppableColumn({
   isOver: boolean;
 }) {
   return (
-    <div className="w-72 shrink-0 flex flex-col">
+    <div className="w-60 md:w-72 shrink-0 flex flex-col">
       {/* Column header */}
       <div className="flex items-center gap-2 mb-3 px-1">
         <div className={cn('w-2.5 h-2.5 rounded-full', column.color)} />

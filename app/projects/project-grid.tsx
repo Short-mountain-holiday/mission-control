@@ -47,7 +47,7 @@ export default function ProjectGrid({ projects }: ProjectGridProps) {
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {projects.map((project) => {
         const isExpanded = expandedProject === project.id;
 
@@ -87,7 +87,7 @@ export default function ProjectGrid({ projects }: ProjectGridProps) {
               </div>
 
               {/* Stats Row */}
-              <div className="flex items-center gap-4 text-xs">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
                 <div className="flex items-center gap-1.5 text-emerald-400">
                   <CheckCircle2 className="w-3 h-3" />
                   <span>{project.completedTasks} done</span>

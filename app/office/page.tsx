@@ -217,7 +217,7 @@ export default function OfficePage() {
   const offline = agents.filter(a => a.status === 'offline').length;
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
@@ -229,7 +229,7 @@ export default function OfficePage() {
             SMH team at work
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 md:gap-4">
           {currentTime && (
             <span className="text-xs text-[var(--text-tertiary)]">{currentTime}</span>
           )}
@@ -255,7 +255,7 @@ export default function OfficePage() {
         <svg
           viewBox="0 0 700 450"
           className="w-full max-w-4xl mx-auto"
-          style={{ minHeight: 400 }}
+          style={{ minHeight: 'min(400px, 60vw)' }}
         >
           {/* Floor */}
           <rect x={0} y={0} width={700} height={450} rx={12} fill="#0a0a0b" />
@@ -316,7 +316,7 @@ export default function OfficePage() {
       </div>
 
       {/* Agent Status Cards */}
-      <div className="grid grid-cols-5 gap-3 mt-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-6">
         {agents.map((agent) => (
           <div
             key={agent.name}

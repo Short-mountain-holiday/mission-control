@@ -148,7 +148,7 @@ export default function CalendarPage() {
   }, []);
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
@@ -187,8 +187,9 @@ export default function CalendarPage() {
         </div>
       ) : (
         <>
-          {/* Week View */}
-          <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl mb-8 overflow-hidden">
+          {/* Week View — Desktop: 7-col grid, Mobile: stacked day list */}
+          {/* Desktop */}
+          <div className="hidden md:block bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl mb-8 overflow-hidden">
             <div className="grid grid-cols-7 divide-x divide-[var(--border-primary)]">
               {weekDays.map((day, i) => {
                 const dayJobs = getJobsForDay(jobs, day.date.getDay());
@@ -229,6 +230,48 @@ export default function CalendarPage() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Mobile */}
+          <div className="md:hidden bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl mb-6 overflow-hidden divide-y divide-[var(--border-primary)]">
+            {weekDays.map((day, i) => {
+              const dayJobs = getJobsForDay(jobs, day.date.getDay());
+              if (dayJobs.length === 0 && !day.isToday) return null;
+              return (
+                <div key={i} className={cn('px-4 py-3', day.isToday && 'bg-[var(--accent)]/5')}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={cn('text-xs font-medium', day.isToday ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]')}>
+                      {day.label}
+                    </span>
+                    {day.isToday && (
+                      <span className="text-[10px] bg-[var(--accent)] text-white px-1.5 py-0.5 rounded-full">Today</span>
+                    )}
+                  </div>
+                  {dayJobs.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {dayJobs.map(job => (
+                        <div
+                          key={job.id}
+                          className={cn(
+                            'px-3 py-2 rounded-md text-xs flex items-center justify-between',
+                            job.enabled
+                              ? 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20'
+                              : 'bg-zinc-800/50 text-zinc-500 border border-zinc-700/30'
+                          )}
+                        >
+                          <span className="font-medium">{job.name}</span>
+                          <span className="text-[10px] opacity-70">
+                            {job.schedule.split(' ')[1]}:{job.schedule.split(' ')[0].padStart(2, '0')} {getTimezoneAbbr()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[var(--text-tertiary)]">No jobs scheduled</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Job List */}
