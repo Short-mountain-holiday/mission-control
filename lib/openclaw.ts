@@ -95,11 +95,26 @@ export async function readFile(filePath: string): Promise<string | null> {
 
   const result = await invokeOpenClawTool('memory_get', { path: safePath });
   if (result.ok && result.result) {
-    // memory_get returns { text, path } 
     const data = result.result;
     if (typeof data === 'string') return data;
+
+    // Gateway wraps response as { content: [{type:"text", text:"..."}], details: {text, path} }
+    // The actual file content is in details.text
+    if (data.details?.text) return data.details.text;
+
+    // Or try unwrapping content[0].text which may be JSON-encoded
+    if (data.content?.[0]?.text) {
+      try {
+        const inner = JSON.parse(data.content[0].text);
+        if (inner.text) return inner.text;
+        return data.content[0].text;
+      } catch {
+        return data.content[0].text;
+      }
+    }
+
     if (data.text) return data.text;
-    return JSON.stringify(data);
+    return null;
   }
   return null;
 }
@@ -111,7 +126,11 @@ export async function searchMemory(query: string, maxResults?: number): Promise<
     maxResults: maxResults || 10,
   });
   if (result.ok && result.result) {
-    return result.result;
+    const data = result.result;
+    // Gateway wraps as { content, details } — results are in details
+    if (data.details?.results) return data.details;
+    if (data.results) return data;
+    return data;
   }
   return null;
 }
