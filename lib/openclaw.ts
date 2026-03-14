@@ -1,6 +1,7 @@
 // ============================================================
 // OpenClaw Gateway Integration Library
-// Proxies file reads and command execution through /tools/invoke
+// Uses memory_get / memory_search (gateway-available tools)
+// instead of read/exec (sandbox-only, not available via gateway)
 // ============================================================
 
 const OPENCLAW_URL = process.env.OPENCLAW_URL || '';
@@ -85,47 +86,44 @@ export async function invokeOpenClawTool(
   }
 }
 
-// ── File Operations ─────────────────────────────────────────
+// ── File Operations (using memory_get) ──────────────────────
 
-/** Read a file from the workspace. Path must pass sanitizePath. */
-export async function readFile(path: string): Promise<string | null> {
-  const safePath = sanitizePath(path);
+/** Read a file from the workspace via gateway memory_get tool. */
+export async function readFile(filePath: string): Promise<string | null> {
+  const safePath = sanitizePath(filePath);
   if (!safePath) return null;
 
-  const result = await invokeOpenClawTool('read', { path: safePath });
+  const result = await invokeOpenClawTool('memory_get', { path: safePath });
   if (result.ok && result.result) {
-    return typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+    // memory_get returns { text, path } 
+    const data = result.result;
+    if (typeof data === 'string') return data;
+    if (data.text) return data.text;
+    return JSON.stringify(data);
   }
   return null;
 }
 
-/** Execute a shell command and return stdout. WARNING: Only call with pre-built commands using sanitized inputs. */
-export async function exec(command: string, timeoutMs?: number): Promise<string | null> {
-  const result = await invokeOpenClawTool('exec', { command }, { timeoutMs: timeoutMs || 15000 });
+/** Search memory files via gateway memory_search tool. */
+export async function searchMemory(query: string, maxResults?: number): Promise<any> {
+  const result = await invokeOpenClawTool('memory_search', {
+    query,
+    maxResults: maxResults || 10,
+  });
   if (result.ok && result.result) {
-    return typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+    return result.result;
   }
   return null;
 }
 
-/** List files in a directory within the workspace. */
-export async function listFiles(dir: string, pattern?: string): Promise<string[]> {
-  if (!dir.startsWith(WORKSPACE_ROOT)) return [];
-  const safeDir = dir.replace(/[^a-zA-Z0-9\-_./]/g, '');
-
-  const cmd = pattern
-    ? `ls -1 "${safeDir}" 2>/dev/null | grep '${sanitizeShellArg(pattern)}'`
-    : `ls -1 "${safeDir}" 2>/dev/null`;
-
-  const output = await exec(cmd);
-  if (!output) return [];
-  return output.trim().split('\n').filter(Boolean);
-}
-
-/** Check if gateway is reachable. */
+/** Check if gateway is reachable using memory_search (a known gateway tool). */
 export async function healthCheck(): Promise<boolean> {
   try {
-    const result = await invokeOpenClawTool('read', { path: `${WORKSPACE_ROOT}/IDENTITY.md` }, { timeoutMs: 5000 });
+    const result = await invokeOpenClawTool(
+      'memory_search',
+      { query: 'health check', maxResults: 1 },
+      { timeoutMs: 5000 }
+    );
     return result.ok === true;
   } catch {
     return false;
